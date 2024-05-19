@@ -85,5 +85,6 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
     switch r.Method {
         case http.MethodGet:
             fmt.Println("naura")
+            fmt.Println("test")
     }
 }
