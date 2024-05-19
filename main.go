@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"sync/atomic"
+	"github.com/gin-gonic/gin"
 )
 
 type SharkAttack struct {
@@ -26,11 +27,9 @@ var (
 
 func main() {
 	filename, err := os.Open("global-shark-attack.json")
-
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	defer func() {
 		if err := filename.Close(); err != nil {
 			log.Fatal(err)
@@ -38,13 +37,15 @@ func main() {
 	}()
 
 	data, err := io.ReadAll(filename)
-
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	var records []SharkAttack
 	err = json.Unmarshal(data, &records)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	var initialPosts []SharkAttack
 	for i := 0; i < 10; i++ {
@@ -53,38 +54,63 @@ func main() {
 
 	posts.Store(initialPosts)
 
-	http.HandleFunc("/posts", handlePosts)
-	// http.HandleFunc("/posts/", handlePost)
+	r := gin.Default()
+
+	r.GET("/posts", getPosts)
+	r.POST("/posts", postPost)
+	r.GET("/posts/:id", getPostByID)
+	r.DELETE("/posts/:id", deletePostByID)
+
 	fmt.Println("Server is listening at port 8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(r.Run(":8080"))
 }
 
-func handlePosts(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		currentPosts := posts.Load().([]SharkAttack)
-		json.NewEncoder(w).Encode(currentPosts)
-    case http.MethodPost:
-        var post SharkAttack
-        if err := json.NewDecoder(r.Body).Decode(&post); err != nil {
-            http.Error(w, err.Error(), http.StatusBadRequest)
-            return
-        }
-        currentPosts := posts.Load().([]SharkAttack)
-        newPosts := append(currentPosts, post)
-        posts.Store(newPosts)
-        w.WriteHeader(http.StatusCreated)
-	default:
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+func getPosts(c *gin.Context) {
+	currentPosts := posts.Load().([]SharkAttack)
+	c.JSON(http.StatusOK, currentPosts)
+}
+
+func postPost(c *gin.Context) {
+	var post SharkAttack
+	if err := c.ShouldBindJSON(&post); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
+	currentPosts := posts.Load().([]SharkAttack)
+	newPosts := append(currentPosts, post)
+	posts.Store(newPosts)
+	c.JSON(http.StatusCreated, post)
 }
 
-func handlePost(w http.ResponseWriter, r *http.Request) {
-    id := r.URL.Path[len("/posts/"):]
-    currentPosts := posts.Load().([]SharkAttack)
-    switch r.Method {
-        case http.MethodGet:
-            fmt.Println("naura")
-            fmt.Println("test")
-    }
+func getPostByID(c *gin.Context) {
+	id := c.Param("id")
+	var index int
+	if _, err := fmt.Sscanf(id, "%d", &index); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid post ID"})
+		return
+	}
+	currentPosts := posts.Load().([]SharkAttack)
+	if index < 0 || index >= len(currentPosts) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Post not found"})
+		return
+	}
+	post := currentPosts[index]
+	c.JSON(http.StatusOK, post)
+}
+
+func deletePostByID(c *gin.Context) {
+	id := c.Param("id")
+	var index int
+	if _, err := fmt.Sscanf(id, "%d", &index); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid post ID"})
+		return
+	}
+	currentPosts := posts.Load().([]SharkAttack)
+	if index < 0 || index >= len(currentPosts) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Post not found"})
+		return
+	}
+	newPosts := append(currentPosts[:index], currentPosts[index+1:]...)
+	posts.Store(newPosts)
+	c.Status(http.StatusNoContent)
 }
