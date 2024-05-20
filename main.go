@@ -30,6 +30,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	defer func() {
 		if err := filename.Close(); err != nil {
 			log.Fatal(err)
@@ -114,3 +115,5 @@ func deletePostByID(c *gin.Context) {
 	posts.Store(newPosts)
 	c.Status(http.StatusNoContent)
 }
+
+
